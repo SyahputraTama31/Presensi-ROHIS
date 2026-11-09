@@ -48,7 +48,9 @@ try {
 
     $role = strtolower(trim($user['Role']));
 
-    if ($role === 'admin' || $role === 'superadmin') {
+    if ($role === 'superadmin') {
+        header('Location: ../Superadmin/Home.php');
+    } elseif ($role === 'admin') {
         header('Location: ../Admin/Home.php');
     } elseif ($role === 'user') {
         header('Location: ../Usr/home.php');

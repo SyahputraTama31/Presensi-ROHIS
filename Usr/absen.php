@@ -11,28 +11,29 @@ if (!$user_id) {
     exit();
 }
 
-if ($_POST) {
+// Ambil info pengaturan absen untuk display
+$pengaturan = $conn->query("SELECT * FROM pengaturan_absen WHERE id = 1")->fetch_assoc();
+$jam_mulai = $pengaturan['jam_mulai'] ?? '07:00:00';
+$jam_selesai = $pengaturan['jam_selesai'] ?? '09:00:00';
+$radius_km = $pengaturan['radius_km'] ?? 0.5;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tanggal = date('Y-m-d');
     $jam = date('H:i:s');
     $lat = floatval($_POST['lat'] ?? 0);
     $lng = floatval($_POST['lng'] ?? 0);
     $foto_base64 = $_POST['foto_base64'] ?? '';
-    $pesan = $_POST['pesan'] ?? '';
+    $pesan = trim($_POST['pesan'] ?? '');
     
     // Check double absen hari ini
     $check_stmt = $conn->prepare("SELECT id FROM absensi WHERE user_id = ? AND tanggal = ?");
     $check_stmt->bind_param("is", $user_id, $tanggal);
     $check_stmt->execute();
     if ($check_stmt->get_result()->num_rows > 0) {
-        $message = 'Anda sudah melakukan absensi hari ini.';
+        $message = 'Anda sudah melakukan presensi pada hari ini.';
         $message_type = 'error';
     } else {
-        // Get pengaturan
-        $pengaturan = $conn->query("SELECT * FROM pengaturan_absen WHERE id = 1")->fetch_assoc();
-        
         // Cek jam absensi
-        $jam_mulai = $pengaturan['jam_mulai'];
-        $jam_selesai = $pengaturan['jam_selesai'];
         $jam_sekarang = date('H:i:s');
         
         $is_valid_time = false;
@@ -44,13 +45,12 @@ if ($_POST) {
         }
         
         if (!$is_valid_time) {
-            $message = 'Absensi di luar jam operasional (Dibuka pukul ' . date('H:i', strtotime($jam_mulai)) . ' - ' . date('H:i', strtotime($jam_selesai)) . ')';
+            $message = 'Presensi di luar jam operasional (Dibuka pukul ' . date('H:i', strtotime($jam_mulai)) . ' - ' . date('H:i', strtotime($jam_selesai)) . ' WIB).';
             $message_type = 'error';
         } else {
             // Calculate distance
-            $lat_admin = $pengaturan['lat_admin'];
-            $lng_admin = $pengaturan['lng_admin'];
-            $radius_km = $pengaturan['radius_km'];
+            $lat_admin = floatval($pengaturan['lat_admin'] ?? 0);
+            $lng_admin = floatval($pengaturan['lng_admin'] ?? 0);
             
             $earth_radius = 6371;
             $dlat = deg2rad($lat - $lat_admin);
@@ -60,14 +60,14 @@ if ($_POST) {
             $distance = $earth_radius * $c;
             
             if ($distance > $radius_km) {
-                $message = 'Anda berada di luar jangkauan lokasi absensi (' . round($distance, 2) . ' km dari sekolah, maks ' . $radius_km . ' km)!';
+                $message = 'Anda berada di luar jangkauan lokasi presensi (' . round($distance * 1000) . ' m dari titik pusat, toleransi maksimal ' . round($radius_km * 1000) . ' m).';
                 $message_type = 'error';
             } else {
                 // Insert absensi
                 $stmt = $conn->prepare("INSERT INTO absensi (user_id, tanggal, waktu, lat, lng, foto_base64, pesan, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'hadir')");
                 $stmt->bind_param("issddss", $user_id, $tanggal, $jam, $lat, $lng, $foto_base64, $pesan);
                 if ($stmt->execute()) {
-                    $message = 'Absensi berhasil tersimpan! Semangat harimu!';
+                    $message = 'Presensi kehadiran Anda berhasil disimpan!';
                     $message_type = 'success';
                 } else {
                     $message = 'Terjadi kesalahan sistem: ' . $conn->error;
@@ -79,140 +79,222 @@ if ($_POST) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="id" class="scroll-smooth">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kamera Absensi - ROHIS</title>
+    <title>Kamera Presensi - ROHIS Portal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../src/output.css?v=<?= filemtime('../src/output.css') ?>">
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="shortcut icon" href="../img/lg.jpg" type="image/x-icon">
     <style>
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; }
-        .sidebar-item { transition: all 0.2s ease; border-right: 4px solid transparent; }
-        .sidebar-item.active { background-color: var(--color-rohis-50) !important; color: var(--color-rohis-700) !important; font-weight: 700; border-right-color: var(--color-rohis-600); }
-        .sidebar-item.active .icon { color: var(--color-rohis-700) !important; }
-        .sidebar-item:not(.active):hover { background-color: #f1f5f9; color: #0f172a; }
-        .fade-in { animation: fadeIn 0.5s ease forwards; opacity: 0; transform: translateY(10px); }
-        @keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }
-        /* Fix video mirroring */
         #videoPreview { transform: scaleX(-1); }
-
-        /* Fallback for missing Tailwind classes */
-        .left-3 { left: 1rem !important; }
-        .left-4 { left: 1.25rem !important; }
-        .pl-9 { padding-left: 2.75rem !important; }
-        .pl-11 { padding-left: 3.25rem !important; }
-        .logo-gradient { background: linear-gradient(135deg, var(--color-rohis-500), var(--color-rohis-700)); color: white; }
     </style>
 </head>
-<body class="text-slate-800 antialiased selection:bg-blue-500 selection:text-white overflow-hidden">
-    <div class="flex h-screen w-full">
-        
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col selection:bg-rohis-700 selection:text-white" style="font-family: 'Plus Jakarta Sans', sans-serif;">
 
-
-        <!-- Main Content -->
-        <main class="flex-1 h-screen overflow-y-auto bg-slate-50 relative">
-            
-            <!-- Background Decoration -->
-            <div class="absolute top-0 left-0 right-0 h-48 bg-rohis-600 rounded-b-[3rem] shadow-sm -z-10"></div>
-            
-            <!-- Tombol Kembali Kanan Atas Absolute -->
-            <a href="home.php" style="top: 2rem; right: 2rem;" class="absolute bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 px-4 py-2.5 rounded-full text-sm font-bold transition-all flex items-center gap-2 z-10 shadow-sm fade-in">
-                <i data-lucide="arrow-left" class="w-4 h-4 text-slate-400"></i>
-                Kembali
+    <!-- Top Navigation Header -->
+    <header class="w-full bg-white border-b border-slate-200 py-3.5 px-4 sm:px-6 sticky top-0 z-30 shadow-xs">
+        <div class="max-w-4xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="home.php" class="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors" title="Kembali ke Dashboard">
+                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                </a>
+                <div>
+                    <h1 class="text-sm font-bold text-slate-900 tracking-tight">Presensi Kehadiran</h1>
+                    <p class="text-[11px] text-slate-400 font-medium">Verifikasi Kamera & Koordinat GPS</p>
+                </div>
+            </div>
+            <a href="home.php" class="text-xs font-semibold text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                Dashboard
             </a>
+        </div>
+    </header>
 
-            <div class="p-8 max-w-3xl mx-auto">
-                
-                <header class="mb-8 text-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 fade-in">
+    <!-- Main Container -->
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 max-w-3xl w-full mx-auto">
+        
+        <!-- Contextual Operational Rules Card -->
+        <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-2 text-slate-600">
+                    <div class="w-7 h-7 rounded-md bg-rohis-50 text-rohis-700 border border-rohis-200 flex items-center justify-center shrink-0">
+                        <i data-lucide="clock" class="w-4 h-4"></i>
+                    </div>
                     <div>
-                        <h2 class="text-3xl font-extrabold tracking-tight">Kamera Presensi</h2>
+                        <span class="font-semibold text-slate-700">Jam Operasional:</span>
+                        <span class="ml-1 font-mono text-slate-900 font-medium"><?= date('H:i', strtotime($jam_mulai)) ?> - <?= date('H:i', strtotime($jam_selesai)) ?> WIB</span>
                     </div>
-                </header>
+                </div>
 
-                <?php if ($message): ?>
-                    <div class="mb-6 p-4 rounded-2xl flex gap-3 items-start <?= $message_type == 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800' ?> fade-in shadow-sm">
-                        <i data-lucide="<?= $message_type == 'success' ? 'check-circle' : 'alert-circle' ?>" class="w-5 h-5 shrink-0 mt-0.5 <?= $message_type == 'success' ? 'text-green-600' : 'text-red-600' ?>"></i>
-                        <div>
-                            <p class="font-bold text-sm"><?= $message_type == 'success' ? 'Berhasil!' : 'Gagal!' ?></p>
-                            <p class="text-xs mt-1 opacity-90"><?= htmlspecialchars($message) ?></p>
-                        </div>
+                <div class="flex items-center gap-2 text-slate-600">
+                    <div class="w-7 h-7 rounded-md bg-rohis-50 text-rohis-700 border border-rohis-200 flex items-center justify-center shrink-0">
+                        <i data-lucide="map-pin" class="w-4 h-4"></i>
                     </div>
-                <?php endif; ?>
+                    <div>
+                        <span class="font-semibold text-slate-700">Radius Lokasi:</span>
+                        <span class="ml-1 text-slate-900 font-medium">Maksimal <?= round($radius_km * 1000) ?> meter</span>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-                <div class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100 fade-in">
-                    <form method="POST" id="absenForm" enctype="multipart/form-data" class="space-y-6">
-                        <input type="hidden" name="lat" id="lat">
-                        <input type="hidden" name="lng" id="lng">
-                        <input type="hidden" name="foto_base64" id="foto_base64">
+        <!-- Alert Notification -->
+        <?php if ($message): ?>
+            <div class="mb-6 p-4 rounded-xl border flex items-start gap-3 text-sm shadow-xs <?= $message_type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800' ?>">
+                <i data-lucide="<?= $message_type === 'success' ? 'check-circle' : 'alert-circle' ?>" class="w-5 h-5 shrink-0 mt-0.5 <?= $message_type === 'success' ? 'text-emerald-600' : 'text-rose-600' ?>"></i>
+                <div>
+                    <p class="font-bold text-xs uppercase tracking-wider"><?= $message_type === 'success' ? 'Berhasil' : 'Perhatian' ?></p>
+                    <p class="text-xs mt-0.5 leading-relaxed"><?= htmlspecialchars($message) ?></p>
+                    <?php if ($message_type === 'success'): ?>
+                        <a href="home.php" class="inline-flex items-center gap-1.5 mt-2 text-xs font-bold text-emerald-700 hover:text-emerald-900 underline">
+                            Kembali ke Dashboard &rarr;
+                        </a>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
 
-                        <!-- Placeholder Area before Camera Starts -->
-                        <div id="cameraPlaceholder" class="w-full h-72 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-400">
-                            <div class="w-16 h-16 bg-white rounded-full shadow-sm border border-slate-100 flex items-center justify-center mb-4">
-                                <i data-lucide="camera-off" class="w-8 h-8 text-slate-300"></i>
+        <!-- Attendance Scanner Card -->
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+            <div class="p-5 sm:p-7">
+                
+                <form method="POST" id="absenForm" class="space-y-5">
+                    <input type="hidden" name="lat" id="lat">
+                    <input type="hidden" name="lng" id="lng">
+                    <input type="hidden" name="foto_base64" id="foto_base64">
+
+                    <!-- Camera / Viewfinder Box -->
+                    <div class="relative w-full rounded-xl overflow-hidden bg-slate-900 border border-slate-200 aspect-[4/3] sm:aspect-[16/10] flex items-center justify-center">
+                        
+                        <!-- State 1: Placeholder before activation -->
+                        <div id="cameraPlaceholder" class="w-full h-full bg-slate-100 flex flex-col items-center justify-center p-6 text-center text-slate-500">
+                            <div class="w-14 h-14 rounded-full bg-white border border-slate-200 shadow-xs flex items-center justify-center mb-3 text-slate-400">
+                                <i data-lucide="camera" class="w-7 h-7"></i>
                             </div>
-                            <p class="text-sm font-bold text-slate-600">Kamera belum aktif</p>
-                            <p class="text-xs text-slate-400 mt-1">Klik tombol di bawah untuk memulai</p>
+                            <h3 class="text-sm font-bold text-slate-800">Kamera & Lokasi Belum Aktif</h3>
+                            <p class="text-xs text-slate-500 max-w-xs mt-1">
+                                Klik tombol di bawah untuk mengaktifkan izin kamera wajah dan posisi koordinat GPS.
+                            </p>
                         </div>
 
-                        <!-- Video Stream Area -->
-                        <div id="videoContainer" class="hidden relative rounded-2xl overflow-hidden shadow-inner bg-slate-900 border border-slate-200">
-                            <video id="videoPreview" class="w-full h-72 object-cover" autoplay playsinline></video>
-
-                        </div>
-
-                        <!-- Capture Preview Area -->
-                        <div id="resultContainer" class="hidden relative rounded-2xl overflow-hidden shadow-sm border border-slate-200">
-                            <img id="fotoPreview" class="w-full h-72 object-cover" alt="Preview">
-                            <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-slate-900/90 via-slate-900/40 to-transparent p-5">
-                                <div class="flex items-center gap-2 text-white/90 text-xs font-bold">
-                                    <div class="w-6 h-6 rounded-full bg-blue-500/20 border border-blue-400/50 flex items-center justify-center">
-                                        <i data-lucide="map-pin" class="w-3 h-3 text-blue-400"></i>
-                                    </div>
-                                    <span id="coords" class="truncate drop-shadow-md">Koordinat tercatat</span>
+                        <!-- State 2: Video Stream -->
+                        <div id="videoContainer" class="hidden w-full h-full relative">
+                            <video id="videoPreview" class="w-full h-full object-cover" autoplay playsinline></video>
+                            
+                            <!-- Clean Viewfinder Corners overlay -->
+                            <div class="absolute inset-8 pointer-events-none flex flex-col justify-between">
+                                <div class="flex justify-between">
+                                    <div class="w-6 h-6 border-t-2 border-l-2 border-white/80 rounded-tl-sm"></div>
+                                    <div class="w-6 h-6 border-t-2 border-r-2 border-white/80 rounded-tr-sm"></div>
+                                </div>
+                                <div class="flex justify-between">
+                                    <div class="w-6 h-6 border-b-2 border-l-2 border-white/80 rounded-bl-sm"></div>
+                                    <div class="w-6 h-6 border-b-2 border-r-2 border-white/80 rounded-br-sm"></div>
                                 </div>
                             </div>
-                        </div>
 
-                        <!-- Motivation Textarea -->
-                        <div id="pesanContainer" class="hidden space-y-2 pt-6 border-t border-slate-100">
-                            <label for="pesan" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">Pesan / Kesan Hari Ini <span class="normal-case font-medium text-slate-400 tracking-normal">(Opsional)</span></label>
-                            <textarea name="pesan" id="pesan" rows="3" placeholder="Apa motivasi harimu ini?" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"></textarea>
-                        </div>
-
-                        <!-- Action Buttons -->
-                        <div class="pt-4">
-                            <button type="button" id="startBtn" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-4 px-6 rounded-xl shadow-md transition-all flex items-center justify-center gap-2">
-                                <i data-lucide="power" class="w-5 h-5"></i> Aktifkan Kamera & Lokasi
-                            </button>
-                            
-                            <button type="button" id="captureBtn" class="hidden w-full bg-rohis-600 hover:bg-rohis-700 text-white font-bold py-4 px-6 rounded-xl shadow-md shadow-rohis-500/20 transition-all flex items-center justify-center gap-2">
-                                <i data-lucide="aperture" class="w-5 h-5"></i> Ambil Foto Wajah
-                            </button>
-
-                            <div id="submitGroup" class="hidden grid grid-cols-2 gap-3">
-                                <button type="button" id="retakeBtn" class="bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-3.5 px-4 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm">
-                                    <i data-lucide="rotate-ccw" class="w-4 h-4 text-slate-400"></i> Ulangi
-                                </button>
-                                <button type="submit" id="submitBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 px-4 rounded-xl shadow-md shadow-green-600/20 transition-all flex items-center justify-center gap-2">
-                                    <i data-lucide="send" class="w-4 h-4"></i> Kirim Absensi
-                                </button>
+                            <!-- Live Tag -->
+                            <div class="absolute top-3 left-3 bg-slate-900/70 backdrop-blur-xs text-white text-[11px] font-mono px-2.5 py-1 rounded-md flex items-center gap-1.5 border border-white/10">
+                                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                Kamera Aktif
                             </div>
                         </div>
-                    </form>
-                </div>
-                
-                <!-- Footer within main area -->
-                <footer class="py-6 text-center text-xs font-medium text-slate-400">
-                    © <?= date('Y') ?> Presensi Rohis. All rights reserved.
-                </footer>
+
+                        <!-- State 3: Captured Photo Preview -->
+                        <div id="resultContainer" class="hidden w-full h-full relative">
+                            <img id="fotoPreview" class="w-full h-full object-cover" alt="Preview Foto">
+                            <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-slate-950/80 via-slate-950/40 to-transparent p-4 flex items-center justify-between text-white text-xs">
+                                <div class="flex items-center gap-2">
+                                    <i data-lucide="map-pin" class="w-4 h-4 text-emerald-400"></i>
+                                    <span id="coords" class="font-mono text-[11px]">Koordinat tercatat</span>
+                                </div>
+                                <span class="text-[10px] uppercase font-semibold tracking-wider text-emerald-300">Foto Siap</span>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Geolocation Status Pill (Visible once location retrieved) -->
+                    <div id="geoPill" class="hidden flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600">
+                        <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0"></i>
+                        <span class="font-medium">Posisi GPS Terdeteksi:</span>
+                        <span id="geoText" class="font-mono font-semibold text-slate-800"></span>
+                    </div>
+
+                    <!-- Optional Note / Message Container -->
+                    <div id="pesanContainer" class="hidden pt-3 border-t border-slate-100">
+                        <label for="pesan" class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                            Catatan / Motivasi Hari Ini <span class="text-slate-400 font-normal lowercase">(opsional)</span>
+                        </label>
+                        <textarea
+                            name="pesan"
+                            id="pesan"
+                            rows="2"
+                            placeholder="Tuliskan catatan kehadiran atau motivasi singkat..."
+                            class="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rohis-500/20 focus:border-rohis-600 transition-all resize-none"
+                        ></textarea>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="pt-2">
+                        
+                        <!-- Step 1: Start Button -->
+                        <button
+                            type="button"
+                            id="startBtn"
+                            class="w-full py-3 px-4 bg-rohis-800 hover:bg-rohis-900 active:bg-rohis-950 text-white font-semibold text-sm rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                            <i data-lucide="power" class="w-4.5 h-4.5"></i>
+                            <span>Aktifkan Kamera & Deteksi Lokasi</span>
+                        </button>
+                        
+                        <!-- Step 2: Capture Button -->
+                        <button
+                            type="button"
+                            id="captureBtn"
+                            class="hidden w-full py-3 px-4 bg-rohis-700 hover:bg-rohis-800 active:bg-rohis-900 text-white font-semibold text-sm rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                            <i data-lucide="camera" class="w-4.5 h-4.5"></i>
+                            <span>Ambil Foto Kehadiran</span>
+                        </button>
+
+                        <!-- Step 3: Retake & Submit Group -->
+                        <div id="submitGroup" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                id="retakeBtn"
+                                class="w-full py-2.5 px-4 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold text-sm rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                                <i data-lucide="rotate-ccw" class="w-4 h-4 text-slate-500"></i>
+                                <span>Foto Ulang</span>
+                            </button>
+                            <button
+                                type="submit"
+                                id="submitBtn"
+                                class="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold text-sm rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                                <i data-lucide="send" class="w-4 h-4"></i>
+                                <span>Kirim Presensi Sekarang</span>
+                            </button>
+                        </div>
+
+                    </div>
+
+                </form>
+
             </div>
-        </main>
-    </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-auto border-t border-slate-200/80 py-4 px-6 text-center text-xs text-slate-400">
+        &copy; <?= date('Y') ?> Portal Presensi ROHIS. Verifikasi waktu dan koordinat tervalidasi otomatis.
+    </footer>
 
     <!-- Scripts -->
     <script>
@@ -229,24 +311,32 @@ if ($_POST) {
         const videoContainer = document.getElementById('videoContainer');
         const resultContainer = document.getElementById('resultContainer');
         const pesanContainer = document.getElementById('pesanContainer');
+        const geoPill = document.getElementById('geoPill');
+        const geoText = document.getElementById('geoText');
         
         startBtn.onclick = async function() {
             try {
-                startBtn.innerHTML = '<i data-lucide="loader" class="w-5 h-5 animate-spin"></i> Meminta Izin...';
+                startBtn.innerHTML = '<i data-lucide="loader" class="w-4.5 h-4.5 animate-spin"></i><span>Meminta Akses Lokasi & Kamera...</span>';
                 startBtn.disabled = true;
                 lucide.createIcons();
                 
-                // Get location
+                // Get Location
                 const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, {
                     enableHighAccuracy: true,
                     timeout: 10000,
                     maximumAge: 0
                 }));
-                document.getElementById('lat').value = pos.coords.latitude;
-                document.getElementById('lng').value = pos.coords.longitude;
-                document.getElementById('coords').textContent = `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`;
+                const latVal = pos.coords.latitude;
+                const lngVal = pos.coords.longitude;
+                document.getElementById('lat').value = latVal;
+                document.getElementById('lng').value = lngVal;
                 
-                // Camera
+                const coordStr = `${latVal.toFixed(6)}, ${lngVal.toFixed(6)}`;
+                document.getElementById('coords').textContent = coordStr;
+                geoText.textContent = coordStr;
+                geoPill.classList.remove('hidden');
+                
+                // Request User Camera
                 stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: "user" } 
                 });
@@ -259,8 +349,8 @@ if ($_POST) {
                 captureBtn.classList.remove('hidden');
                 
             } catch (err) {
-                alert('Gagal! Pastikan Anda mengizinkan akses Lokasi dan Kamera. Error: ' + err.message);
-                startBtn.innerHTML = '<i data-lucide="power" class="w-5 h-5"></i> Aktifkan Kamera & Lokasi';
+                alert('Gagal mengakses perangkat: Pastikan izin lokasi (GPS) dan kamera diizinkan di browser Anda.\n\nDetail: ' + err.message);
+                startBtn.innerHTML = '<i data-lucide="power" class="w-4.5 h-4.5"></i><span>Aktifkan Kamera & Deteksi Lokasi</span>';
                 startBtn.disabled = false;
                 lucide.createIcons();
             }
@@ -272,11 +362,12 @@ if ($_POST) {
             canvas.height = 480;
             
             const ctx = canvas.getContext('2d');
+            // Mirror image horizontally to match preview
             ctx.translate(canvas.width, 0);
             ctx.scale(-1, 1);
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            fotoData = canvas.toDataURL('image/jpeg', 0.8);
+            fotoData = canvas.toDataURL('image/jpeg', 0.85);
             
             document.getElementById('foto_base64').value = fotoData;
             document.getElementById('fotoPreview').src = fotoData;
@@ -295,17 +386,14 @@ if ($_POST) {
         };
 
         retakeBtn.onclick = function() {
-            // Reset to camera view
             resultContainer.classList.add('hidden');
             pesanContainer.classList.add('hidden');
             submitGroup.classList.add('hidden');
             captureBtn.classList.remove('hidden');
             
-            // Restart camera
             startBtn.onclick();
         };
         
-        // Cleanup on page hide
         window.onunload = () => {
             if (stream) stream.getTracks().forEach(track => track.stop());
         };

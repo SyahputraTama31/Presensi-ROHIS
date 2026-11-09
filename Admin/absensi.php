@@ -9,513 +9,362 @@ if (!in_array($role, ['admin', 'superadmin'])) {
     exit;
 }
 
-$admin_id = $_SESSION['user_id'];
+$admin_id   = $_SESSION['user_id'];
 $admin_nama = $_SESSION['nama'] ?? 'Admin';
-$msg = '';
-$msg_type = '';
+$msg        = '';
+$msg_type   = '';
 
 // Handle POST actions
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Update Status Absensi
-    if (isset($_POST['action']) && $_POST['action'] === 'update_absensi') {
-        $absen_id = intval($_POST['absen_id']);
-        $new_status = $_POST['new_status'];
-        $allowed = ['hadir','izin','sakit','alpha'];
-        if (in_array($new_status, $allowed)) {
-            $stmt = $conn->prepare("UPDATE absensi SET status=? WHERE id=?");
-            $stmt->bind_param("si", $new_status, $absen_id);
-            if ($stmt->execute()) { $msg = 'Status absensi berhasil diubah!'; $msg_type = 'success'; }
-            else { $msg = 'Gagal mengubah status.'; $msg_type = 'error'; }
-            $stmt->close();
-        }
-    }
+include 'absensi/aksi.php';
 
-    // Hapus Absensi
-    if (isset($_POST['action']) && $_POST['action'] === 'delete_absensi') {
-        $absen_id = intval($_POST['absen_id']);
-        if ($absen_id > 0) {
-            $stmt = $conn->prepare("DELETE FROM absensi WHERE id=?");
-            $stmt->bind_param("i", $absen_id);
-            if ($stmt->execute()) { $msg = 'Data absensi berhasil dihapus!'; $msg_type = 'success'; }
-            else { $msg = 'Gagal menghapus data.'; $msg_type = 'error'; }
-            $stmt->close();
-        }
-    }
+// Fetch data & filter
+include 'absensi/data.php';
 
-    // Logout
-    if (isset($_POST['logout'])) {
-        session_destroy();
-        header('Location: ../lng/lgn.php');
-        exit;
-    }
-}
-
-// Fetch absensi with filters
-$filter_tanggal = $_GET['tanggal'] ?? '';
-$filter_nama = $_GET['nama'] ?? '';
-$where = "1=1";
-if ($filter_tanggal) $where .= " AND a.tanggal = '" . $conn->real_escape_string($filter_tanggal) . "'";
-if ($filter_nama) $where .= " AND u.nama LIKE '%" . $conn->real_escape_string($filter_nama) . "%'";
-$absensi_list = [];
-$q = $conn->query("SELECT a.*, u.nama as user_nama FROM absensi a JOIN users u ON a.user_id = u.id WHERE $where ORDER BY a.tanggal DESC, a.waktu DESC LIMIT 50");
-if ($q) { while ($r = $q->fetch_assoc()) $absensi_list[] = $r; }
-$foto_profil = '';
-$fp = $conn->query("SELECT foto_profil FROM users WHERE id = $admin_id");
-if ($fp && $r = $fp->fetch_assoc()) $foto_profil = $r['foto_profil'] ?? '';
+$active_menu = 'absensi';
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - Sistem Presensi</title>
+    <title>Edit Data Presensi - Admin ROHIS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../src/output.css?v=<?= filemtime('../src/output.css') ?>">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="shortcut icon" href="../img/lg.jpg" type="image/x-icon">
-    <style>
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; }
-        .sidebar-item { transition: all 0.2s ease; border-right: 4px solid transparent; }
-        .sidebar-item.active { background-color: var(--color-rohis-50) !important; color: var(--color-rohis-700) !important; font-weight: 700; border-right-color: var(--color-rohis-600); }
-        .sidebar-item.active .icon { color: var(--color-rohis-700) !important; }
-        .sidebar-item:not(.active):hover { background-color: #f1f5f9; color: #0f172a; }
-
-        /* Fallback for missing Tailwind classes */
-        .left-3 { left: 1rem !important; }
-        .left-4 { left: 1.25rem !important; }
-        .pl-9 { padding-left: 2.75rem !important; }
-        .pl-11 { padding-left: 3.25rem !important; }
-        .logo-gradient { background: linear-gradient(135deg, var(--color-rohis-500), var(--color-rohis-700)); color: white; }
-        .btn-gradient { background: linear-gradient(to right, var(--color-rohis-600), var(--color-rohis-700)); color: white; }
-        .btn-gradient:hover { background: linear-gradient(to right, var(--color-rohis-700), var(--color-rohis-800)); }
-    </style>
 </head>
-<body class="text-slate-800 antialiased selection:bg-blue-500 selection:text-white">
-    <div class="flex min-h-screen">
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col selection:bg-rohis-700 selection:text-white" style="font-family: 'Plus Jakarta Sans', sans-serif;">
+
+    <!-- Sidebar Component -->
+    <?php include 'partials/side.php'; ?>
+
+    <!-- Main Content Area with Desktop Left Margin -->
+    <div class="lg:pl-64 flex-1 flex flex-col min-h-screen">
         
-        <!-- Sidebar -->
-        <aside class="w-64 bg-white border-r border-slate-200 flex flex-col fixed h-full z-20 shadow-sm">
-            <!-- Logo Area -->
-            <div class="h-20 flex items-center px-6 border-b border-slate-100">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 logo-gradient rounded-xl flex items-center justify-center shadow-md shadow-blue-500/20">
-                        <i data-lucide="shield" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <h1 class="text-lg font-extrabold text-slate-800 tracking-tight leading-tight">Admin</h1>
-                        <p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Sistem Presensi</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- User Info Area -->
-            <div class="px-6 py-5 border-b border-slate-100">
-                <div class="flex items-center gap-3">
-                    <?php if (!empty($foto_profil)): ?>
-                        <img src="<?= htmlspecialchars($foto_profil) ?>" class="rounded-full border-2 border-white shadow-sm object-cover" style="width:44px;height:44px;min-width:44px;">
-                    <?php else: ?>
-                        <div class="rounded-full bg-blue-100 border-2 border-white shadow-sm flex items-center justify-center text-blue-600 font-bold text-sm" style="width:44px;height:44px;min-width:44px;">
-                            <?= strtoupper(substr($admin_nama, 0, 1)) ?>
-                        </div>
-                    <?php endif; ?>
-                    <div class="flex-1 min-w-0 overflow-hidden">
-                        <p class="text-sm font-bold text-slate-800 truncate" title="<?= htmlspecialchars($admin_nama) ?>"><?= htmlspecialchars($admin_nama) ?></p>
-                        <p class="text-xs text-blue-600 font-medium capitalize truncate"><?= htmlspecialchars($role) ?></p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Navigation -->
-            <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-                <p class="px-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Menu Utama</p>
-                
-                <a href="Home.php" class="sidebar-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 text-left">
-                    <i data-lucide="map-pin" class="icon w-5 h-5 text-slate-400"></i>
-                    Pengaturan Lokasi
-                </a>
-                
-                <a href="absensi.php" class="sidebar-item active w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 text-left">
-                    <i data-lucide="clipboard-list" class="icon w-5 h-5 text-slate-400"></i>
-                    Edit Data Presensi
-                </a>
-                
-                <a href="akun.php" class="sidebar-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 text-left">
-                    <i data-lucide="user-cog" class="icon w-5 h-5 text-slate-400"></i>
-                    Kelola Akun
-                </a>
-            </nav>
-
-            <!-- Bottom Area / Logout -->
-            <div class="p-4 border-t border-slate-100">
-                <form method="POST" class="logout-form">
-                    <input type="hidden" name="logout" value="1">
-                    <button type="submit" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-sm font-bold transition-colors">
-                        <i data-lucide="log-out" class="w-4 h-4"></i>
-                        Keluar Sistem
-                    </button>
-                </form>
-            </div>
-        </aside>
-
-        <!-- Main Content Wrapper -->
-        <main class="flex-1 ml-64 p-8">
+        <main class="flex-1 p-4 sm:p-6 lg:p-8 max-w-6xl w-full mx-auto">
             
-            <!-- Header section -->
-            <header class="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <!-- Page Header -->
+            <header class="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200/80">
                 <div>
-                    <h2 class="text-2xl font-extrabold text-slate-800 tracking-tight">Edit Data Presensi</h2>
-                    <p class="text-sm text-slate-500 mt-1">Kelola status presensi dan lihat foto bukti kehadiran siswa.</p>
+                    <div class="flex items-center gap-2 mb-1.5">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-rohis-50 border border-rohis-200 text-rohis-700 text-xs font-semibold">
+                            <i data-lucide="clipboard-list" class="w-3.5 h-3.5"></i>
+                            Manajemen Presensi
+                        </span>
+                        <span class="text-xs text-slate-400 font-medium"><?= date('l, d F Y') ?></span>
+                    </div>
+                    <h1 class="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Data Presensi Siswa</h1>
+                    <p class="text-sm text-slate-500 mt-1">Pantau, perbarui status, dan catat presensi kegiatan siswa ROHIS.</p>
                 </div>
-                <div class="flex items-center gap-2 bg-white px-4 py-2 rounded-full border border-slate-200 shadow-sm">
-                    <i data-lucide="clock" class="w-4 h-4 text-blue-500"></i>
-                    <span class="text-sm font-medium text-slate-600"><?= date('d M Y') ?></span>
+
+                <div class="flex items-center gap-3">
+                    <button type="button" onclick="openTambahModal()" class="inline-flex items-center gap-2 px-4 py-2.5 bg-rohis-800 hover:bg-rohis-900 active:bg-rohis-950 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer">
+                        <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                        <span>Catat Presensi Manual</span>
+                    </button>
                 </div>
             </header>
 
-            <!-- Messages -->
+            <!-- Feedback Notification -->
             <?php if ($msg): ?>
-            <div class="mb-6 p-4 rounded-2xl border flex items-start gap-3 <?= $msg_type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800' ?> text-sm font-medium animate-in fade-in slide-in-from-top-4 duration-300">
-                <i data-lucide="<?= $msg_type === 'success' ? 'check-circle' : 'alert-circle' ?>" class="w-5 h-5 shrink-0 mt-0.5"></i>
-                <p><?= htmlspecialchars($msg) ?></p>
+                <div class="mb-6 p-4 rounded-xl border flex items-start gap-3 text-sm shadow-xs <?= $msg_type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : ($msg_type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-rose-50 border-rose-200 text-rose-800') ?>">
+                    <i data-lucide="<?= $msg_type === 'success' ? 'check-circle' : 'alert-circle' ?>" class="w-5 h-5 shrink-0 mt-0.5 <?= $msg_type === 'success' ? 'text-emerald-600' : ($msg_type === 'warning' ? 'text-amber-600' : 'text-rose-600') ?>"></i>
+                    <p class="text-xs font-medium leading-relaxed"><?= htmlspecialchars($msg) ?></p>
+                </div>
+            <?php endif; ?>
+
+            <!-- Filter Card -->
+            <div class="bg-white border border-slate-200 rounded-2xl shadow-xs p-5 sm:p-6 mb-6">
+                <form method="GET" class="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+                    
+                    <div class="sm:col-span-4">
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Tanggal Presensi</label>
+                        <div class="relative">
+                            <input type="date" name="tanggal" value="<?= htmlspecialchars($filter_tanggal) ?>"
+                                class="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-rohis-500/20 focus:border-rohis-600 transition-all font-mono">
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-5">
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Cari Nama Siswa</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                <i data-lucide="search" class="w-4 h-4"></i>
+                            </span>
+                            <input type="text" name="nama" value="<?= htmlspecialchars($filter_nama) ?>" placeholder="Ketik nama siswa..."
+                                class="w-full pl-9 pr-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rohis-500/20 focus:border-rohis-600 transition-all">
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-3 flex gap-2">
+                        <button type="submit" class="flex-1 py-2 px-3.5 bg-rohis-800 hover:bg-rohis-900 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer">
+                            Terapkan
+                        </button>
+                        <a href="absensi.php" class="py-2 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-semibold transition-colors text-center">
+                            Reset
+                        </a>
+                    </div>
+
+                </form>
+            </div>
+
+            <!-- Summary KPI & Bulk Action Cards -->
+            <?php if ($show_all): ?>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <!-- Stat: Sudah Absen -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex items-center justify-between">
+                    <div>
+                        <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Sudah Presensi</span>
+                        <p class="text-2xl font-bold text-emerald-700 mt-0.5"><?= count($absensi_list) ?> <span class="text-xs font-medium text-slate-400">siswa</span></p>
+                    </div>
+                    <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center">
+                        <i data-lucide="check-circle" class="w-5 h-5"></i>
+                    </div>
+                </div>
+
+                <!-- Stat: Belum Absen -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex items-center justify-between">
+                    <div>
+                        <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Belum Presensi</span>
+                        <p class="text-2xl font-bold text-amber-700 mt-0.5"><?= count($absent_users) ?> <span class="text-xs font-medium text-slate-400">siswa</span></p>
+                    </div>
+                    <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 flex items-center justify-center">
+                        <i data-lucide="clock" class="w-5 h-5"></i>
+                    </div>
+                </div>
+
+                <!-- Quick Action Bulk Alpha -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex items-center justify-between">
+                    <?php if (count($absent_users) > 0): ?>
+                        <div>
+                            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Aksi Massal</span>
+                            <p class="text-xs text-slate-600 mt-0.5">Tandai siswa belum hadir</p>
+                        </div>
+                        <button type="button" onclick="openBulkAlphaModal()"
+                            class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer">
+                            Tandai <?= count($absent_users) ?> Alpha
+                        </button>
+                    <?php else: ?>
+                        <div>
+                            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status Rekap</span>
+                            <p class="text-xs font-semibold text-emerald-700 mt-0.5">Seluruh siswa sudah tercatat</p>
+                        </div>
+                        <div class="w-10 h-10 rounded-xl bg-slate-50 text-slate-400 border border-slate-200 flex items-center justify-center">
+                            <i data-lucide="check" class="w-5 h-5"></i>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
             <?php endif; ?>
 
-            <!-- Section: Edit Data Presensi -->
-            <div>
-                <!-- Filter -->
-                <div class="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 mb-8 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-bl-full -z-0"></div>
-                    <form method="GET" class="relative z-10 grid grid-cols-1 sm:grid-cols-12 gap-5 items-end">
-                        <div class="sm:col-span-3">
-                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tanggal Presensi</label>
-                            <div class="relative">
-                                <i data-lucide="calendar" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500"></i>
-                                <input type="date" name="tanggal" value="<?= htmlspecialchars($filter_tanggal) ?>" class="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-slate-700">
-                            </div>
-                        </div>
-                        <div class="sm:col-span-5">
-                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Pencarian Siswa</label>
-                            <div class="relative">
-                                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500"></i>
-                                <input type="text" name="nama" value="<?= htmlspecialchars($filter_nama) ?>" placeholder="Ketik nama siswa..." class="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-slate-700">
-                            </div>
-                        </div>
-                        <div class="sm:col-span-4 flex gap-3">
-                            <button type="submit" class="flex-1 px-6 py-3 btn-gradient text-white rounded-xl text-sm font-bold shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2">
-                                <i data-lucide="search" class="w-4 h-4"></i> Cari
-                            </button>
-                            <a href="absensi.php" class="flex-1 px-6 py-3 bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-xl text-sm font-bold transition-all text-center flex items-center justify-center gap-2">
-                                <i data-lucide="refresh-cw" class="w-4 h-4"></i> Reset
-                            </a>
-                        </div>
-                    </form>
-                </div>
+            <!-- Main Data Table Card -->
+            <div class="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
                 
-                <!-- Table -->
-                <div class="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left">
-                            <thead class="bg-slate-50 border-b border-slate-100 text-slate-500 text-xs uppercase tracking-wider font-bold">
+                <!-- Tab Switching Bar -->
+                <?php if ($show_all && count($absent_users) > 0): ?>
+                <div class="px-5 pt-4 pb-0 border-b border-slate-200 flex items-center gap-2">
+                    <button type="button" id="tabBtnAll" onclick="switchTab('all')"
+                        class="tab-btn active px-3.5 py-2 text-xs font-bold text-slate-700 border-b-2 border-rohis-800 transition-all cursor-pointer">
+                        Semua Catatan (<?= count($absensi_list) + count($absent_users) ?>)
+                    </button>
+                    <button type="button" id="tabBtnAbsent" onclick="switchTab('absent')"
+                        class="tab-btn px-3.5 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 border-b-2 border-transparent transition-all flex items-center gap-1.5 cursor-pointer">
+                        <span>Belum Presensi</span>
+                        <span class="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold"><?= count($absent_users) ?></span>
+                    </button>
+                </div>
+                <?php endif; ?>
+
+                <!-- Table Content Wrapper -->
+                <div class="overflow-x-auto">
+                    
+                    <!-- TAB 1: Semua Data -->
+                    <div id="tabAll">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
                                 <tr>
-                                    <th class="px-6 py-4">Nama Siswa</th>
-                                    <th class="px-6 py-4">Waktu</th>
-                                    <th class="px-6 py-4">Bukti Foto</th>
-                                    <th class="px-6 py-4">Status &amp; Tindakan</th>
-                                    <th class="px-6 py-4 text-center">Hapus</th>
+                                    <th class="px-5 py-3.5">Nama Siswa</th>
+                                    <th class="px-5 py-3.5">Waktu Check-In</th>
+                                    <th class="px-5 py-3.5">Keterangan</th>
+                                    <th class="px-5 py-3.5">Bukti Foto</th>
+                                    <th class="px-5 py-3.5">Status & Perubahan Cepat</th>
+                                    <th class="px-5 py-3.5 text-center">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100">
-                                <?php if (empty($absensi_list)): ?>
-                                <tr>
-                                    <td colspan="5" class="px-6 py-12 text-center">
-                                        <div class="flex flex-col items-center justify-center text-slate-400">
-                                            <i data-lucide="inbox" class="w-10 h-10 mb-3 text-slate-300"></i>
-                                            <p class="font-medium">Tidak ada data absensi ditemukan.</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <?php else: foreach ($absensi_list as $a):
-                                    $sc = [
-                                        'hadir'=>'bg-green-100 text-green-700 border-green-200',
-                                        'izin'=>'bg-yellow-100 text-yellow-700 border-yellow-200',
-                                        'sakit'=>'bg-blue-100 text-blue-700 border-blue-200',
-                                        'alpha'=>'bg-red-100 text-red-700 border-red-200'
-                                    ];
-                                    $badge = $sc[$a['status']] ?? 'bg-slate-100 text-slate-700 border-slate-200';
+                                
+                                <?php if (empty($absensi_list) && empty($absent_users)): ?>
+                                    <tr>
+                                        <td colspan="6" class="px-5 py-12 text-center text-slate-400">
+                                            <i data-lucide="inbox" class="w-8 h-8 text-slate-300 mx-auto mb-2"></i>
+                                            <p class="font-semibold text-slate-700">Tidak ada data presensi yang sesuai.</p>
+                                            <p class="text-[11px] mt-0.5">Silakan pilih tanggal lain atau sesuaikan kata kunci pencarian.</p>
+                                        </td>
+                                    </tr>
+                                <?php endif; ?>
+
+                                <!-- List of Recorded Attendance -->
+                                <?php foreach ($absensi_list as $a): 
+                                    $st = strtolower($a['status'] ?? '');
+                                    if ($st === 'hadir') {
+                                        $pill_class = 'bg-emerald-50 text-emerald-800 border-emerald-300';
+                                    } elseif ($st === 'izin') {
+                                        $pill_class = 'bg-amber-50 text-amber-800 border-amber-300';
+                                    } elseif ($st === 'sakit') {
+                                        $pill_class = 'bg-sky-50 text-sky-800 border-sky-300';
+                                    } else {
+                                        $pill_class = 'bg-rose-50 text-rose-800 border-rose-300';
+                                    }
                                 ?>
-                                <tr class="hover:bg-slate-50/50 transition-colors group">
-                                    <td class="px-6 py-4">
-                                        <p class="font-bold text-slate-800"><?= htmlspecialchars($a['user_nama']) ?></p>
-                                        <p class="text-[11px] text-slate-400 mt-0.5 uppercase tracking-wider">ID: #<?= $a['id'] ?></p>
+                                <tr class="hover:bg-slate-50/80 transition-colors">
+                                    <td class="px-5 py-3.5 font-semibold text-slate-900 whitespace-nowrap">
+                                        <?= htmlspecialchars($a['user_nama']) ?>
+                                        <span class="block text-[10px] text-slate-400 font-mono font-normal">ID: #<?= $a['id'] ?></span>
                                     </td>
-                                    <td class="px-6 py-4">
-                                        <p class="font-bold text-slate-700"><?= $a['waktu'] ? date('H:i', strtotime($a['waktu'])) : '-' ?></p>
-                                        <p class="text-xs text-slate-500 mt-0.5"><?= date('d M Y', strtotime($a['tanggal'])) ?></p>
+                                    <td class="px-5 py-3.5 font-mono text-slate-600 whitespace-nowrap">
+                                        <div class="font-bold text-slate-800"><?= $a['waktu'] ? date('H:i', strtotime($a['waktu'])) . ' WIB' : '-' ?></div>
+                                        <div class="text-[11px] text-slate-400 font-normal"><?= date('d M Y', strtotime($a['tanggal'])) ?></div>
                                     </td>
-                                    <td class="px-6 py-4">
+                                    <td class="px-5 py-3.5 text-slate-600 max-w-xs truncate">
+                                        <?= !empty($a['pesan']) ? htmlspecialchars($a['pesan']) : '<span class="text-slate-300 italic">-</span>' ?>
+                                    </td>
+                                    <td class="px-5 py-3.5 whitespace-nowrap">
                                         <?php if (!empty($a['foto_base64'])): ?>
-                                            <button type="button" onclick="openPhotoModal('foto_<?= $a['id'] ?>')" class="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-600 rounded-lg text-xs font-bold transition-colors">
-                                                <i data-lucide="image" class="w-4 h-4"></i> Lihat Foto
+                                            <button type="button" onclick="openPhotoModal('foto_<?= $a['id'] ?>')"
+                                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rohis-50 hover:bg-rohis-100 text-rohis-700 border border-rohis-200 text-xs font-semibold transition-colors cursor-pointer">
+                                                <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                                                <span>Lihat Foto</span>
                                             </button>
                                         <?php else: ?>
-                                            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-400 rounded-lg text-xs font-medium">
-                                                <i data-lucide="image-off" class="w-4 h-4"></i> Tanpa Foto
+                                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-400 text-[11px] font-medium border border-slate-200">
+                                                Tanpa Foto
                                             </span>
                                         <?php endif; ?>
                                         <textarea id="foto_<?= $a['id'] ?>" class="hidden"><?= htmlspecialchars($a['foto_base64'] ?? '') ?></textarea>
                                     </td>
-                                    <td class="px-6 py-4">
+                                    <td class="px-5 py-3.5 whitespace-nowrap">
                                         <form method="POST" class="flex items-center gap-2 m-0">
                                             <input type="hidden" name="action" value="update_absensi">
                                             <input type="hidden" name="absen_id" value="<?= $a['id'] ?>">
-                                            <select name="new_status" class="px-2 py-1.5 rounded-lg text-xs font-bold border focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all cursor-pointer <?= $badge ?>">
-                                                <option value="hadir" <?= $a['status']==='hadir'?'selected':'' ?>>Hadir</option>
-                                                <option value="izin" <?= $a['status']==='izin'?'selected':'' ?>>Izin</option>
-                                                <option value="sakit" <?= $a['status']==='sakit'?'selected':'' ?>>Sakit</option>
-                                                <option value="alpha" <?= $a['status']==='alpha'?'selected':'' ?>>Alpha</option>
+                                            <?php if ($filter_tanggal): ?>
+                                                <input type="hidden" name="_redirect_tanggal" value="<?= htmlspecialchars($filter_tanggal) ?>">
+                                            <?php endif; ?>
+                                            
+                                            <select name="new_status" class="px-2 py-1 rounded-lg text-xs font-semibold border <?= $pill_class ?> focus:outline-none focus:ring-1 focus:ring-rohis-500 cursor-pointer">
+                                                <option value="hadir" <?= $a['status'] === 'hadir' ? 'selected' : '' ?>>Hadir</option>
+                                                <option value="izin"  <?= $a['status'] === 'izin'  ? 'selected' : '' ?>>Izin</option>
+                                                <option value="sakit" <?= $a['status'] === 'sakit' ? 'selected' : '' ?>>Sakit</option>
+                                                <option value="alpha" <?= $a['status'] === 'alpha' ? 'selected' : '' ?>>Alpha</option>
                                             </select>
-                                            <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-600 rounded-lg text-xs font-bold transition-colors shadow-sm" title="Simpan Status">
-                                                <i data-lucide="save" class="w-4 h-4"></i> Simpan
+
+                                            <input type="text" name="new_pesan" value="<?= htmlspecialchars($a['pesan'] ?? '') ?>" placeholder="Keterangan..."
+                                                class="w-32 px-2.5 py-1 rounded-lg text-xs border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-rohis-500 text-slate-700">
+
+                                            <button type="submit" class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer">
+                                                Simpan
                                             </button>
                                         </form>
                                     </td>
-                                    <!-- Kolom Hapus -->
-                                    <td class="px-4 py-4 text-center">
-                                        <form method="POST" class="m-0" onsubmit="return confirmHapus(event, '<?= htmlspecialchars($a['user_nama']) ?>', '<?= date('d M Y', strtotime($a['tanggal'])) ?>')">
+                                    <td class="px-5 py-3.5 text-center whitespace-nowrap">
+                                        <form method="POST" class="m-0"
+                                            onsubmit="return confirmHapus(event, '<?= htmlspecialchars(addslashes($a['user_nama'])) ?>', '<?= date('d M Y', strtotime($a['tanggal'])) ?>')">
                                             <input type="hidden" name="action" value="delete_absensi">
                                             <input type="hidden" name="absen_id" value="<?= $a['id'] ?>">
-                                            <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 rounded-lg text-xs font-bold transition-colors shadow-sm" title="Hapus Absensi">
-                                                <i data-lucide="trash-2" class="w-4 h-4"></i> Hapus
+                                            <button type="submit" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title="Hapus Data">
+                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
                                             </button>
                                         </form>
                                     </td>
                                 </tr>
-                                <?php endforeach; endif; ?>
+                                <?php endforeach; ?>
+
+                                <!-- List of Students Not Yet Checked In (At bottom of all tab) -->
+                                <?php if ($show_all && count($absent_users) > 0): ?>
+                                    <?php foreach ($absent_users as $u): ?>
+                                    <tr class="bg-amber-50/30 hover:bg-amber-50/60 transition-colors">
+                                        <td class="px-5 py-3.5 font-semibold text-slate-900 whitespace-nowrap">
+                                            <?= htmlspecialchars($u['nama']) ?>
+                                            <span class="inline-flex items-center px-1.5 py-0.2 rounded-md bg-amber-100 text-amber-800 text-[10px] font-semibold ml-1.5">
+                                                Belum Presensi
+                                            </span>
+                                        </td>
+                                        <td class="px-5 py-3.5 text-slate-400 font-mono whitespace-nowrap">
+                                            - <span class="text-[11px] text-slate-400 block"><?= date('d M Y', strtotime($filter_tanggal)) ?></span>
+                                        </td>
+                                        <td class="px-5 py-3.5 text-slate-300 italic">-</td>
+                                        <td class="px-5 py-3.5 text-slate-400 text-[11px]">-</td>
+                                        <td class="px-5 py-3.5 whitespace-nowrap">
+                                            <button type="button" onclick="openTambahModalFor(<?= $u['id'] ?>, '<?= htmlspecialchars(addslashes($u['nama'])) ?>', '<?= $filter_tanggal ?>')"
+                                                class="inline-flex items-center gap-1.5 px-3 py-1 bg-rohis-50 hover:bg-rohis-100 text-rohis-700 border border-rohis-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer">
+                                                <i data-lucide="edit" class="w-3.5 h-3.5"></i>
+                                                <span>Catat Status</span>
+                                            </button>
+                                        </td>
+                                        <td class="px-5 py-3.5 text-center text-slate-300">-</td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+
                             </tbody>
                         </table>
                     </div>
+
+                    <!-- TAB 2: Hanya Siswa Belum Absen -->
+                    <?php if ($show_all && count($absent_users) > 0): ?>
+                    <div id="tabAbsent" class="hidden">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+                                <tr>
+                                    <th class="px-5 py-3.5">Nama Siswa</th>
+                                    <th class="px-5 py-3.5">Tanggal</th>
+                                    <th class="px-5 py-3.5">Status</th>
+                                    <th class="px-5 py-3.5">Aksi Tindakan</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <?php foreach ($absent_users as $u): ?>
+                                <tr class="hover:bg-slate-50/80 transition-colors">
+                                    <td class="px-5 py-3.5 font-semibold text-slate-900">
+                                        <?= htmlspecialchars($u['nama']) ?>
+                                    </td>
+                                    <td class="px-5 py-3.5 font-mono text-slate-600">
+                                        <?= date('d M Y', strtotime($filter_tanggal)) ?>
+                                    </td>
+                                    <td class="px-5 py-3.5">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold">
+                                            Belum Presensi
+                                        </span>
+                                    </td>
+                                    <td class="px-5 py-3.5">
+                                        <button type="button" onclick="openTambahModalFor(<?= $u['id'] ?>, '<?= htmlspecialchars(addslashes($u['nama'])) ?>', '<?= $filter_tanggal ?>')"
+                                            class="inline-flex items-center gap-1.5 px-3 py-1 bg-rohis-800 hover:bg-rohis-900 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer">
+                                            <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                                            <span>Catat Presensi</span>
+                                        </button>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <?php endif; ?>
+
                 </div>
             </div>
-            
-            <footer class="mt-12 text-center text-xs font-medium text-slate-400">
-                &copy; <?= date('Y') ?> Sistem Presensi. All rights reserved.
-            </footer>
+
         </main>
+
+        <!-- Footer -->
+        <footer class="mt-auto border-t border-slate-200 py-4 px-6 text-center text-xs text-slate-400">
+            &copy; <?= date('Y') ?> Portal Presensi ROHIS. Rekapitulasi kehadiran terpusat.
+        </footer>
+
     </div>
 
-    <!-- Modal Konfirmasi Hapus -->
-    <div id="confirmHapusModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4" style="background:rgba(15,23,42,0.5);backdrop-filter:blur(4px);">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-slate-100 overflow-hidden">
-            <div class="p-6 text-center">
-                <div class="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
-                    <i data-lucide="trash-2" class="w-7 h-7 text-red-500"></i>
-                </div>
-                <h3 class="text-lg font-extrabold text-slate-800 mb-1">Hapus Presensi?</h3>
-                <p class="text-sm text-slate-500 mb-1">Data presensi berikut akan dihapus permanen:</p>
-                <div class="mt-3 px-4 py-3 bg-red-50 rounded-xl border border-red-100 text-left">
-                    <p class="text-sm font-bold text-slate-700"><i data-lucide="user" class="w-3.5 h-3.5 inline mr-1 text-slate-400"></i><span id="hapusNama"></span></p>
-                    <p class="text-xs text-slate-500 mt-1"><i data-lucide="calendar" class="w-3.5 h-3.5 inline mr-1 text-slate-400"></i><span id="hapusTanggal"></span></p>
-                </div>
-                <p class="text-xs text-red-500 font-medium mt-3">Tindakan ini tidak dapat dibatalkan.</p>
-            </div>
-            <div class="flex border-t border-slate-100">
-                <button onclick="batalHapus()" class="flex-1 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">
-                    Batal
-                </button>
-                <div class="w-px bg-slate-100"></div>
-                <button onclick="lanjutHapus()" class="flex-1 py-3 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors">
-                    Ya, Hapus
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal Foto (Fullscreen Lightbox) -->
-    <div id="photoModal" class="fixed inset-0 z-50 hidden flex flex-col" style="background:#f8fafc;">
-        <!-- Top Bar -->
-        <div class="flex items-center justify-between px-5 py-3 shrink-0 bg-white border-b border-slate-200 shadow-sm">
-            <div class="flex items-center gap-2 text-slate-800">
-                <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                    <i data-lucide="camera" class="w-4 h-4"></i>
-                </div>
-                <h3 class="text-sm font-bold">Bukti Kehadiran</h3>
-            </div>
-            <button type="button" onclick="closePhotoModal()"
-                class="w-9 h-9 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
-                title="Tutup">
-                <i data-lucide="x" class="w-5 h-5"></i>
-            </button>
-        </div>
-
-        <!-- Photo Area — fills remaining space -->
-        <div id="noPhotoMsg" class="hidden flex-1 flex-col items-center justify-center text-slate-400 text-sm">
-            <div class="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
-                <i data-lucide="image-off" class="w-8 h-8 text-slate-300"></i>
-            </div>
-            <span class="font-medium">Bukti foto tidak dilampirkan.</span>
-        </div>
-
-        <div id="zoomWrapper" class="hidden flex-1 select-none overflow-hidden" style="cursor:zoom-in;min-height:0;background:#f1f5f9;">
-            <img id="modalImage" src="" alt="Foto Absen"
-                style="width:100%;height:100%;object-fit:contain;transform-origin:center center;transform:scale(1);transition:transform 0.15s ease;will-change:transform;">
-        </div>
-
-        <!-- Bottom Zoom Controls -->
-        <div id="zoomIndicator" class="hidden shrink-0 py-3 flex items-center justify-center gap-3 bg-white border-t border-slate-200">
-            <button onclick="zoomOut()" title="Zoom out"
-                class="w-9 h-9 rounded-full flex items-center justify-center text-slate-600 font-bold text-lg hover:bg-slate-100 transition-all leading-none border border-slate-200">&#8722;</button>
-            <span id="zoomLabel" class="text-xs font-bold text-slate-500 w-12 text-center">100%</span>
-            <button onclick="zoomIn()" title="Zoom in"
-                class="w-9 h-9 rounded-full flex items-center justify-center text-slate-600 font-bold text-lg hover:bg-slate-100 transition-all leading-none border border-slate-200">&#43;</button>
-        </div>
-    </div>
-
-    <script>
-    lucide.createIcons();
-
-    // ---- Konfirmasi Hapus ----
-    var _hapusForm = null;
-    function confirmHapus(e, nama, tanggal) {
-        e.preventDefault();
-        _hapusForm = e.target;
-        document.getElementById('hapusNama').textContent = nama;
-        document.getElementById('hapusTanggal').textContent = tanggal;
-        document.getElementById('confirmHapusModal').classList.remove('hidden');
-        return false;
-    }
-    function batalHapus() {
-        document.getElementById('confirmHapusModal').classList.add('hidden');
-        _hapusForm = null;
-    }
-    function lanjutHapus() {
-        document.getElementById('confirmHapusModal').classList.add('hidden');
-        if (_hapusForm) _hapusForm.submit();
-    }
-
-    // ---- Zoom State ----
-    let _zoomScale = 1;
-    const ZOOM_MIN = 1, ZOOM_MAX = 4, ZOOM_STEP = 0.35;
-
-    function _applyZoom(scale, smooth) {
-        if (smooth === undefined) smooth = true;
-        _zoomScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, scale));
-        const img  = document.getElementById('modalImage');
-        const wrap = document.getElementById('zoomWrapper');
-        img.style.transition = smooth ? 'transform 0.15s ease' : 'none';
-        img.style.transform  = 'scale(' + _zoomScale + ')';
-        var cur = _zoomScale >= ZOOM_MAX ? 'zoom-out' : 'zoom-in';
-        img.style.cursor  = cur;
-        wrap.style.cursor = cur;
-        document.getElementById('zoomLabel').textContent = Math.round(_zoomScale * 100) + '%';
-    }
-
-    function zoomIn()  { _applyZoom(_zoomScale + ZOOM_STEP); }
-    function zoomOut() { _applyZoom(_zoomScale - ZOOM_STEP); }
-
-    // ---- Modal Open/Close ----
-    function openPhotoModal(id) {
-        var base64Data = document.getElementById(id).value;
-        var imgEl      = document.getElementById('modalImage');
-        var noPhotoEl  = document.getElementById('noPhotoMsg');
-        var wrapper    = document.getElementById('zoomWrapper');
-        var indicator  = document.getElementById('zoomIndicator');
-        var modal      = document.getElementById('photoModal');
-
-        _applyZoom(1, false);
-
-        if (base64Data && base64Data.trim() !== '') {
-            imgEl.src = base64Data;
-            wrapper.classList.remove('hidden');
-            wrapper.classList.add('flex');
-            noPhotoEl.classList.add('hidden');
-            noPhotoEl.classList.remove('flex');
-            indicator.classList.remove('hidden');
-            indicator.classList.add('flex');
-        } else {
-            wrapper.classList.add('hidden');
-            wrapper.classList.remove('flex');
-            indicator.classList.add('hidden');
-            indicator.classList.remove('flex');
-            noPhotoEl.classList.remove('hidden');
-            noPhotoEl.classList.add('flex');
-        }
-
-        modal.style.opacity = '0';
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        setTimeout(function() { modal.style.transition = 'opacity 0.2s ease'; modal.style.opacity = '1'; }, 10);
-    }
-
-    function closePhotoModal() {
-        var modal = document.getElementById('photoModal');
-        modal.style.opacity = '0';
-        setTimeout(function() {
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-            modal.style.transition = '';
-            _applyZoom(1, false);
-        }, 200);
-    }
-
-    // ---- Scroll Wheel Zoom ----
-    document.getElementById('zoomWrapper').addEventListener('wheel', function(e) {
-        e.preventDefault();
-        _applyZoom(_zoomScale + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
-    }, { passive: false });
-
-    // ---- Double-click Toggle Zoom ----
-    document.getElementById('zoomWrapper').addEventListener('dblclick', function() {
-        _applyZoom(_zoomScale > 1 ? 1 : 2);
-    });
-
-    // ---- Pinch-to-Zoom (Touch) ----
-    var _lastPinchDist = null;
-    document.getElementById('zoomWrapper').addEventListener('touchstart', function(e) {
-        if (e.touches.length === 2) {
-            _lastPinchDist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-        }
-    }, { passive: true });
-
-    document.getElementById('zoomWrapper').addEventListener('touchmove', function(e) {
-        if (e.touches.length === 2 && _lastPinchDist !== null) {
-            e.preventDefault();
-            var dist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-            _applyZoom(_zoomScale * (dist / _lastPinchDist), false);
-            _lastPinchDist = dist;
-        }
-    }, { passive: false });
-
-    document.getElementById('zoomWrapper').addEventListener('touchend', function() {
-        _lastPinchDist = null;
-    });
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script>
-        document.querySelectorAll('.logout-form').forEach(form => {
-            form.addEventListener('submit', function(e) {
-                e.preventDefault();
-                Swal.fire({
-                    title: 'Konfirmasi Keluar',
-                    text: "Apakah Anda yakin ingin keluar dari sistem?",
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonColor: '#ef4444',
-                    cancelButtonColor: '#94a3b8',
-                    confirmButtonText: 'Ya, Keluar!',
-                    cancelButtonText: 'Batal'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        this.submit();
-                    }
-                });
-            });
-        });
-    </script>
+    <!-- Modals & Scripts -->
+    <?php include 'absensi/modal.php'; ?>
+    <?php include 'absensi/js.php'; ?>
 </body>
 </html>

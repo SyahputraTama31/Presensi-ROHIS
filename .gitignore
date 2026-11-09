@@ -1,2 +1,72 @@
+# ========================================================
+# Git Ignore - PRESENSI ROHIS (PHP & Tailwind CSS)
+# ========================================================
+
+# --- Dependencies (Penyebab utama repo menjadi besar) ---
 node_modules/
-src/output.css
+vendor/
+
+# --- Environment & Rahasia Kredensial ---
+.env
+.env.backup
+.env.local
+.env.*.local
+*.env
+config.local.php
+
+# --- Log & File Cache ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+*.cache/
+.cache/
+
+# --- Editor / IDE ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+
+# --- File Sistem Operasi (Windows / macOS / Linux) ---
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# --- Backup & File Arsip Sementara ---
+*.bak
+*.tmp
+*.temp
+*~
+*.zip
+*.rar
+*.7z
+*.tar.gz
+
+# --- File Backup Database Besar (Kecuali skema dasar bila diperlukan) ---
+# Uncomment baris di bawah jika ada file dump database harian/backup besar
+# *.dump
+# backup_*.sql
+# dump_*.sql
+
+# --- Build Output (Opsional) ---
+# Catatan: Jika proyek di-hosting tanpa Node.js (misal shared hosting / Laragon),
+# biarkan 'src/output.css' tetap di-commit agar tampilan web tidak hilang.
+# Jika ingin CSS build di-generate ulang di server via CI/CD, uncomment baris berikut:
+# src/output.css
+

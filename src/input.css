@@ -1,32 +1,41 @@
 @import "tailwindcss";
 
 @source "../Admin/**/*.php";
+@source "../Superadmin/**/*.php";
 @source "../Usr/**/*.php";
 @source "../lng/**/*.php";
+@source "../*.php";
 
 @theme {
-  --color-rohis-50: #eef4ff;
-  --color-rohis-100: #dbe6fd;
-  --color-rohis-200: #bfd2fc;
-  --color-rohis-300: #93b4f9;
-  --color-rohis-400: #6090f3;
-  --color-rohis-500: #3b6eee;
-  --color-rohis-600: #2553e3;
-  --color-rohis-700: #1d40d0;
-  --color-rohis-800: #1e35a9;
-  --color-rohis-900: #1e3185;
+  --color-rohis-50: #f0f5ff;
+  --color-rohis-100: #e0ecfd;
+  --color-rohis-200: #c2dcfb;
+  --color-rohis-300: #93c4f7;
+  --color-rohis-400: #5ea6f0;
+  --color-rohis-500: #2d82e2;
+  --color-rohis-600: #1d65c8;
+  --color-rohis-700: #194fa6;
+  --color-rohis-800: #184287;
+  --color-rohis-900: #18386f;
+  --color-rohis-950: #102347;
 }
 
-/* Explicit Utilities Bypass */
+/* Explicit Utilities & Fallback Helpers */
 @layer utilities {
   .bg-rohis-50 { background-color: var(--color-rohis-50); }
   .bg-rohis-100 { background-color: var(--color-rohis-100); }
-  .bg-rohis-400 { background-color: var(--color-rohis-400); }
+  .bg-rohis-200 { background-color: var(--color-rohis-200); }
   .bg-rohis-500 { background-color: var(--color-rohis-500); }
   .bg-rohis-600 { background-color: var(--color-rohis-600); }
+  .bg-rohis-700 { background-color: var(--color-rohis-700); }
+  .bg-rohis-800 { background-color: var(--color-rohis-800); }
+  .bg-rohis-900 { background-color: var(--color-rohis-900); }
+  .text-rohis-50 { color: var(--color-rohis-50); }
   .text-rohis-100 { color: var(--color-rohis-100); }
   .text-rohis-600 { color: var(--color-rohis-600); }
   .text-rohis-700 { color: var(--color-rohis-700); }
-  .shadow-rohis-400\/20 { box-shadow: 0 4px 6px -1px rgba(96, 144, 243, 0.2), 0 2px 4px -2px rgba(96, 144, 243, 0.2); }
-  .shadow-rohis-500\/20 { box-shadow: 0 4px 6px -1px rgba(59, 110, 238, 0.2), 0 2px 4px -2px rgba(59, 110, 238, 0.2); }
+  .text-rohis-800 { color: var(--color-rohis-800); }
+  .border-rohis-200 { border-color: var(--color-rohis-200); }
+  .border-rohis-600 { border-color: var(--color-rohis-600); }
+  .border-rohis-700 { border-color: var(--color-rohis-700); }
 }
